@@ -2,13 +2,20 @@
 
 Get started with the Document Agent in 5 minutes!
 
-## 1. Install Dependencies
+## 1. Create a Virtual Environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+## 2. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 2. Configure Environment
+## 3. Configure Environment
 
 Copy the example configuration:
 
@@ -16,26 +23,47 @@ Copy the example configuration:
 cp .env.example .env
 ```
 
-Edit `.env` with your settings:
+Edit `.env` with your settings. Choose one of the three providers:
+
+**Option A: Anthropic (Claude)**
+```env
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+```
+
+**Option B: OpenAI (GPT-4)**
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key-here
+OPENAI_MODEL=gpt-4-turbo-preview
+```
+
+**Option C: Google Gemini**
+```env
+AI_PROVIDER=gemini
+# Use API key:
+GOOGLE_API_KEY=your-google-api-key-here
+GEMINI_MODEL=gemini-2.5-flash
+
+# OR use Vertex AI with a service account (recommended for production):
+# GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/your/service-account.json
+# VERTEX_AI_LOCATION=us-central1
+```
+
+Then configure the MCP server paths:
 
 ```env
-# Choose your provider
-AI_PROVIDER=anthropic
-
-# Add your API key
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# Point to the example MCP servers
 ELASTIC_SEARCH_MCP_COMMAND=python
-ELASTIC_SEARCH_MCP_ARGS=/full/path/to/knowledge_agent/examples/elastic_search_mcp_example.py
+ELASTIC_SEARCH_MCP_ARGS=/full/path/to/knowledge_agent/document_search_tool/server.py
 
 IMAGE_ANALYSIS_MCP_COMMAND=python
-IMAGE_ANALYSIS_MCP_ARGS=/full/path/to/knowledge_agent/examples/image_analysis_mcp_example.py
+IMAGE_ANALYSIS_MCP_ARGS=/full/path/to/knowledge_agent/image_mcp_service/server.py
 ```
 
 **Important:** Replace `/full/path/to/knowledge_agent` with your actual path!
 
-## 3. Set Up Elasticsearch (for Example Server)
+## 4. Set Up Elasticsearch (for Example Server)
 
 The example MCP server needs Elasticsearch running:
 
@@ -53,7 +81,7 @@ Set the Elasticsearch URL:
 export ELASTICSEARCH_URL=http://localhost:9200
 ```
 
-## 4. Add Test Data
+## 5. Add Test Data
 
 Create a test document in Elasticsearch:
 
@@ -68,7 +96,7 @@ curl -X POST "http://localhost:9200/documents/_doc/1" -H 'Content-Type: applicat
 '
 ```
 
-## 5. Test Your Setup
+## 6. Test Your Setup
 
 Run the diagnostic:
 
@@ -83,7 +111,7 @@ You should see:
 ✓ All compatibility checks passed!
 ```
 
-## 6. Launch the Web UI
+## 7. Launch the Web UI
 
 ```bash
 python ui.py
@@ -91,7 +119,7 @@ python ui.py
 
 Open your browser to: `http://localhost:7860`
 
-## 7. Ask Your First Question
+## 8. Ask Your First Question
 
 In the web UI, try these example questions:
 
@@ -155,7 +183,7 @@ docker run -d -p 9200:9200 -e "discovery.type=single-node" elasticsearch:8.11.0
 # Check if documents exist
 curl "http://localhost:9200/documents/_search?q=*"
 
-# Add a test document (see step 4 above)
+# Add a test document (see step 5 above)
 ```
 
 ## Next Steps

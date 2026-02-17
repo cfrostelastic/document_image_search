@@ -7,7 +7,7 @@ An AI agent that answers questions about documents by searching Elastic and anal
 ## Features
 
 - 🌐 **Optional Web UI** - Easy-to-use browser interface for testing
-- 🤖 **Multi-Provider Support** - Use OpenAI (GPT-4) or Anthropic (Claude)
+- 🤖 **Multi-Provider Support** - Use Anthropic (Claude), OpenAI (GPT-4), or Google Gemini (API or Vertex AI)
 - 🔍 **Document Search** - Searches documents using Elasticsearch via MCP
 - 🖼️ **Image Analysis** - Analyzes images from local file paths or URLs
 - 💬 **Interactive Interface** - Both web UI and command-line options
@@ -17,75 +17,68 @@ An AI agent that answers questions about documents by searching Elastic and anal
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - API key for your chosen provider:
   - Anthropic API key (for Claude), OR
-  - OpenAI API key (for GPT-4)
+  - OpenAI API key (for GPT-4), OR
+  - Google API key or Vertex AI service account (for Gemini)
 - Running MCP servers:
   - Elastic document search MCP server
   - Image analysis MCP server
 
 ## Installation
 
-1. Install dependencies:
+1. Create a virtual environment:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Set up your MCP servers:
+3. Set up your MCP servers:
 
-See [MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md) for detailed instructions on configuring MCP servers, or use the [example servers](examples/) provided.
+See [MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md) for detailed instructions on configuring MCP servers, or use the provided servers in `document_search_tool/` and `image_mcp_service/`.
 
-Quick start with examples:
-```bash
-# Install MCP server dependencies
-pip install elasticsearch httpx
-
-# The example servers are in the examples/ directory
-```
-
-3. Configure environment variables:
+4. Configure environment variables:
 
 ```bash
 cp .env.example .env
 ```
 
-4. Edit `.env` with your configuration:
+5. Edit `.env` with your AI provider and MCP server paths:
 
-**Option A: Using the provided example servers**
 ```env
-# Choose your AI provider
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# Point to example MCP servers (update paths to match your setup)
-ELASTIC_SEARCH_MCP_COMMAND=python
-ELASTIC_SEARCH_MCP_ARGS=/Users/yourname/knowledge_agent/examples/elastic_search_mcp_example.py
-
-IMAGE_ANALYSIS_MCP_COMMAND=python
-IMAGE_ANALYSIS_MCP_ARGS=/Users/yourname/knowledge_agent/examples/image_analysis_mcp_example.py
-```
-
-**Option B: Using your own MCP servers**
-```env
-# Choose your AI provider: 'anthropic' or 'openai'
+# Choose your AI provider: 'anthropic', 'openai', or 'gemini'
 AI_PROVIDER=anthropic
 
-# If using Anthropic (Claude)
+# --- Anthropic (Claude) ---
 ANTHROPIC_API_KEY=your_anthropic_api_key
 ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 
-# If using OpenAI (GPT-4)
+# --- OpenAI (GPT-4) ---
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-4-turbo-preview
 
-# Configure paths to your MCP servers
-ELASTIC_SEARCH_MCP_COMMAND=node
-ELASTIC_SEARCH_MCP_ARGS=/path/to/your/elastic-search-server/index.js
+# --- Google Gemini ---
+# Option 1: Use Gemini API with API key
+GOOGLE_API_KEY=your_google_api_key
+GEMINI_MODEL=gemini-2.5-flash
+# Option 2: Use Vertex AI with service account (recommended for production)
+# GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/your/service-account.json
+# VERTEX_AI_LOCATION=us-central1
 
-IMAGE_ANALYSIS_MCP_COMMAND=node
-IMAGE_ANALYSIS_MCP_ARGS=/path/to/your/image-analysis-server/index.js
+# MCP server paths (update to match your setup)
+ELASTIC_SEARCH_MCP_COMMAND=python
+ELASTIC_SEARCH_MCP_ARGS=/path/to/knowledge_agent/document_search_tool/server.py
+
+IMAGE_ANALYSIS_MCP_COMMAND=python
+IMAGE_ANALYSIS_MCP_ARGS=/path/to/knowledge_agent/image_mcp_service/server.py
 
 # Model settings
 MAX_TOKENS=4096
@@ -167,14 +160,18 @@ asyncio.run(ask_question())
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AI_PROVIDER` | AI provider to use: `anthropic` or `openai` | `anthropic` |
+| `AI_PROVIDER` | AI provider: `anthropic`, `openai`, or `gemini` | `anthropic` |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (if using Claude) | Required for Anthropic |
 | `ANTHROPIC_MODEL` | Claude model to use | `claude-sonnet-4-5-20250929` |
 | `OPENAI_API_KEY` | Your OpenAI API key (if using GPT) | Required for OpenAI |
 | `OPENAI_MODEL` | OpenAI model to use | `gpt-4-turbo-preview` |
-| `ELASTIC_SEARCH_MCP_COMMAND` | Command to run elastic search MCP server | `node` |
+| `GOOGLE_API_KEY` | Your Google API key (if using Gemini with API key) | Required for Gemini (option 1) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Path to service account JSON (if using Vertex AI) | Required for Gemini (option 2) |
+| `VERTEX_AI_LOCATION` | Vertex AI region | `us-central1` |
+| `GEMINI_MODEL` | Gemini model to use | `gemini-2.5-flash` |
+| `ELASTIC_SEARCH_MCP_COMMAND` | Command to run elastic search MCP server | `python` |
 | `ELASTIC_SEARCH_MCP_ARGS` | Arguments for elastic search MCP server | Required |
-| `IMAGE_ANALYSIS_MCP_COMMAND` | Command to run image analysis MCP server | `node` |
+| `IMAGE_ANALYSIS_MCP_COMMAND` | Command to run image analysis MCP server | `python` |
 | `IMAGE_ANALYSIS_MCP_ARGS` | Arguments for image analysis MCP server | Required |
 | `MAX_TOKENS` | Maximum tokens for responses | `4096` |
 | `TEMPERATURE` | Response creativity (0-1) | `0.7` |
@@ -199,10 +196,10 @@ For detailed troubleshooting, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 ## Troubleshooting
 
 ### "API_KEY not found" errors
-Make sure you've created a `.env` file and added the API key for your chosen provider (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
+Make sure you've created a `.env` file and added the API key for your chosen provider (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY`/`GOOGLE_SERVICE_ACCOUNT_FILE`).
 
 ### "Unsupported AI provider" error
-Verify that `AI_PROVIDER` is set to either `anthropic` or `openai` in your `.env` file.
+Verify that `AI_PROVIDER` is set to `anthropic`, `openai`, or `gemini` in your `.env` file.
 
 ### "Tool not found"
 Verify that your MCP servers are running and the paths in `.env` are correct.
@@ -247,20 +244,35 @@ If images aren't being analyzed:
 
 ### Switching Providers
 
-To switch between OpenAI and Anthropic, simply update your `.env` file:
+To switch providers, update `AI_PROVIDER` and the relevant key in your `.env` file:
 
-**For OpenAI:**
+**Anthropic (Claude):**
+```env
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your_key_here
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+```
+
+**OpenAI (GPT-4):**
 ```env
 AI_PROVIDER=openai
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-4-turbo-preview
 ```
 
-**For Anthropic:**
+**Google Gemini (API key):**
 ```env
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=your_key_here
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+AI_PROVIDER=gemini
+GOOGLE_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+**Google Gemini (Vertex AI with service account):**
+```env
+AI_PROVIDER=gemini
+GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/service-account.json
+VERTEX_AI_LOCATION=us-central1
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ### Customizing the System Prompt
@@ -286,7 +298,8 @@ SYSTEM_PROMPT=You are a specialized research assistant focused on technical docu
          ▼
 ┌─────────────────┐
 │  Document Agent │
-│   (Claude AI)   │
+│ (Claude/GPT/   │
+│    Gemini)      │
 └────────┬────────┘
          │
     ┌────┴────┐
