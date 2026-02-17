@@ -31,8 +31,8 @@ This repository contains two integrated projects that work together to provide i
 
 2. Question Answering (knowledge_agent)
    ┌──────────┐      ┌─────────────┐      ┌──────────────┐
-   │  User    │─────>│   Claude/   │─────>│  Elastic MCP │
-   │ Question │      │  GPT Agent  │      │  Server      │
+   │  User    │─────>│ Claude/GPT/ │─────>│  Elastic MCP │
+   │ Question │      │ Gemini Agent│      │  Server      │
    └──────────┘      └─────────────┘      └──────────────┘
                             │                     │
                             │                     v
@@ -62,6 +62,10 @@ This repository contains two integrated projects that work together to provide i
 git clone <repository-url>
 cd document_image_search
 
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
 # Install dependencies for both projects
 pip install -r pdf_import/requirements.txt
 pip install -r knowledge_agent/requirements.txt
@@ -79,8 +83,11 @@ Edit `.env` with your API keys and configuration:
 
 ```env
 # Required: Choose your AI provider
-AI_PROVIDER=anthropic  # or 'openai'
-ANTHROPIC_API_KEY=your_key_here
+AI_PROVIDER=anthropic  # or 'openai' or 'gemini'
+ANTHROPIC_API_KEY=your_key_here  # if using anthropic
+# OPENAI_API_KEY=your_key_here  # if using openai
+# GOOGLE_API_KEY=your_key_here  # if using gemini with API key
+# GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/service-account.json  # if using gemini with Vertex AI
 
 # Required: Elasticsearch configuration
 ELASTICSEARCH_HOST=http://localhost:9200
@@ -165,7 +172,7 @@ See [pdf_import/README.md](./pdf_import/README.md) for detailed documentation.
 AI agent that answers questions about your documents by combining semantic search with image analysis.
 
 **Features:**
-- Multi-provider support (Anthropic Claude, OpenAI GPT)
+- Multi-provider support (Anthropic Claude, OpenAI GPT, Google Gemini)
 - Web UI for easy testing
 - MCP (Model Context Protocol) integration
 - Image analysis capabilities
@@ -216,8 +223,12 @@ document_image_search/
 
 ```bash
 # 1. Setup (one-time)
+python3 -m venv venv
+source venv/bin/activate
 cp .env.example .env
 # Edit .env with your settings
+pip install -r pdf_import/requirements.txt
+pip install -r knowledge_agent/requirements.txt
 cd pdf_import
 python elasticsearch_setup.py
 
@@ -254,9 +265,12 @@ python agent.py
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Elasticsearch 8.x with E5 inference endpoint configured
-- API key for Anthropic Claude or OpenAI GPT
+- API key for your chosen AI provider:
+  - Anthropic API key (for Claude), OR
+  - OpenAI API key (for GPT-4), OR
+  - Google API key or Vertex AI service account (for Gemini)
 - (Optional) LM Studio with a vision-capable model for image captioning
 
 ## Documentation
@@ -276,9 +290,13 @@ See [.env.example](./.env.example) for a complete list of configuration options.
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `AI_PROVIDER` | AI provider: 'anthropic' or 'openai' | Yes |
+| `AI_PROVIDER` | AI provider: 'anthropic', 'openai', or 'gemini' | Yes |
 | `ANTHROPIC_API_KEY` | Anthropic API key (if using Claude) | If using Anthropic |
 | `OPENAI_API_KEY` | OpenAI API key (if using GPT) | If using OpenAI |
+| `GOOGLE_API_KEY` | Google API key (if using Gemini with API key) | If using Gemini (option 1) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Path to service account JSON (if using Vertex AI) | If using Gemini (option 2) |
+| `VERTEX_AI_LOCATION` | Vertex AI region | If using Vertex AI |
+| `GEMINI_MODEL` | Gemini model to use | If using Gemini |
 | `ELASTICSEARCH_HOST` | Elasticsearch URL | Yes |
 | `ELASTICSEARCH_API_KEY` | Elasticsearch API key | Yes* |
 | `ELASTICSEARCH_INDEX` | Index name for documents | Yes |
@@ -292,7 +310,10 @@ See [.env.example](./.env.example) for a complete list of configuration options.
 
 **"API_KEY not found" errors**
 - Ensure you've created a `.env` file from `.env.example`
-- Add the appropriate API key for your chosen provider
+- Add the appropriate API key for your chosen provider (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY`/`GOOGLE_SERVICE_ACCOUNT_FILE`)
+
+**"Unsupported AI provider" error**
+- Verify that `AI_PROVIDER` is set to `anthropic`, `openai`, or `gemini` in your `.env` file
 
 **Elasticsearch connection errors**
 - Verify Elasticsearch is running: `curl http://localhost:9200`
