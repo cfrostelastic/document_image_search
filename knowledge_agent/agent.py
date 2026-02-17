@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from anthropic import Anthropic
 from openai import OpenAI
+from google import genai
+from google.genai import types
+import vertexai
+from vertexai.generative_models import GenerativeModel
+from google.oauth2 import service_account
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -40,8 +45,47 @@ class DocumentAgent:
                 raise ValueError("OPENAI_API_KEY not found in environment variables")
             self.client = OpenAI(api_key=self.api_key)
             self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+        elif self.provider == "gemini":
+            self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+
+            # Check if using Vertex AI (service account) or regular Gemini API
+            self.service_account_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
+
+            if self.service_account_file:
+                # Use Vertex AI with service account
+                if not os.path.exists(self.service_account_file):
+                    raise ValueError(f"Service account file not found: {self.service_account_file}")
+
+                # Load service account credentials
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.service_account_file,
+                    scopes=['https://www.googleapis.com/auth/cloud-platform']
+                )
+
+                # Get project ID from service account file
+                with open(self.service_account_file, 'r') as f:
+                    sa_data = json.load(f)
+                    project_id = sa_data.get('project_id')
+
+                # Initialize Vertex AI
+                location = os.getenv("VERTEX_AI_LOCATION", "us-central1")
+                vertexai.init(
+                    project=project_id,
+                    location=location,
+                    credentials=credentials
+                )
+
+                self.use_vertex_ai = True
+                self.client = None  # Will create model instance with tools in _answer_with_gemini
+            else:
+                # Use regular Gemini API with API key
+                self.api_key = os.getenv("GOOGLE_API_KEY")
+                if not self.api_key:
+                    raise ValueError("GOOGLE_API_KEY or GOOGLE_SERVICE_ACCOUNT_FILE must be provided")
+                self.use_vertex_ai = False
+                self.client = genai.Client(api_key=self.api_key)
         else:
-            raise ValueError(f"Unsupported AI provider: {self.provider}. Choose 'anthropic' or 'openai'")
+            raise ValueError(f"Unsupported AI provider: {self.provider}. Choose 'anthropic', 'openai', or 'gemini'")
 
         self.max_tokens = int(os.getenv("MAX_TOKENS", "4096"))
         self.temperature = float(os.getenv("TEMPERATURE", "0.7"))
@@ -275,6 +319,201 @@ class DocumentAgent:
                 # No tool calls, return the response
                 return message.content or "I couldn't generate a response."
 
+    async def _answer_with_gemini(self, question: str) -> str:
+        """Answer question using Google's Gemini (via API or Vertex AI)."""
+        if self.use_vertex_ai:
+            return await self._answer_with_vertex_ai(question)
+        else:
+            return await self._answer_with_gemini_api(question)
+
+    async def _answer_with_gemini_api(self, question: str) -> str:
+        """Answer question using Google's Gemini API."""
+        # Prepare tools for Gemini
+        gemini_tools = []
+        for tool in self.tools:
+            # Convert MCP tool schema to Gemini function declaration format
+            function_declaration = types.FunctionDeclaration(
+                name=tool["name"],
+                description=tool["description"],
+                parameters=tool["input_schema"]
+            )
+            gemini_tools.append(function_declaration)
+
+        # Create tool config
+        tool_config = types.Tool(function_declarations=gemini_tools)
+
+        # Initialize conversation history
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part(text=question)]
+            )
+        ]
+
+        # Agent loop - continue until we get a final answer
+        while True:
+            # Generate response with tools
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                    tools=[tool_config],
+                    temperature=self.temperature,
+                    max_output_tokens=self.max_tokens
+                )
+            )
+
+            # Check if we have function calls
+            if response.candidates[0].content.parts:
+                has_function_call = any(
+                    hasattr(part, 'function_call') and part.function_call
+                    for part in response.candidates[0].content.parts
+                )
+
+                if has_function_call:
+                    # Add assistant's response to conversation
+                    contents.append(response.candidates[0].content)
+
+                    # Process all function calls
+                    function_response_parts = []
+
+                    for part in response.candidates[0].content.parts:
+                        if hasattr(part, 'function_call') and part.function_call:
+                            function_call = part.function_call
+                            tool_name = function_call.name
+                            tool_input = dict(function_call.args)
+
+                            print(f"Using tool: {tool_name}")
+                            print(f"  Input: {tool_input}")
+
+                            # Execute tool
+                            result = await self.call_tool(tool_name, tool_input)
+
+                            print(f"  Result: {result.content[:200]}...")
+                            print()
+
+                            # Call callback if provided (for UI)
+                            if self.tool_call_callback:
+                                self.tool_call_callback(tool_name, tool_input, str(result.content))
+
+                            # Add function response
+                            function_response_parts.append(
+                                types.Part(
+                                    function_response=types.FunctionResponse(
+                                        name=tool_name,
+                                        response={"result": str(result.content)}
+                                    )
+                                )
+                            )
+
+                    # Add function responses to conversation
+                    contents.append(
+                        types.Content(
+                            role="user",
+                            parts=function_response_parts
+                        )
+                    )
+                else:
+                    # No function calls, extract text response
+                    text_parts = [
+                        part.text for part in response.candidates[0].content.parts
+                        if hasattr(part, 'text')
+                    ]
+                    return ''.join(text_parts) if text_parts else "I couldn't generate a response."
+            else:
+                # Empty response
+                return "I couldn't generate a response."
+
+    async def _answer_with_vertex_ai(self, question: str) -> str:
+        """Answer question using Google's Vertex AI."""
+        from vertexai.generative_models import (
+            FunctionDeclaration,
+            Tool,
+            Content,
+            Part
+        )
+
+        # Prepare tools for Vertex AI
+        function_declarations = []
+        for tool in self.tools:
+            # Convert MCP tool schema to Vertex AI function declaration
+            function_declaration = FunctionDeclaration(
+                name=tool["name"],
+                description=tool["description"],
+                parameters=tool["input_schema"]
+            )
+            function_declarations.append(function_declaration)
+
+        # Create tool with all function declarations
+        vertex_tools = [Tool(function_declarations=function_declarations)]
+
+        # Create model instance with tools
+        model = GenerativeModel(
+            self.model,
+            tools=vertex_tools,
+            system_instruction=[self.system_prompt]
+        )
+
+        # Start chat session
+        chat = model.start_chat()
+
+        # Send initial question
+        response = chat.send_message(question)
+
+        # Agent loop - continue until we get a final answer
+        while True:
+            # Check if we have function calls
+            if response.candidates[0].content.parts:
+                has_function_call = any(
+                    hasattr(part, 'function_call') and part.function_call
+                    for part in response.candidates[0].content.parts
+                )
+
+                if has_function_call:
+                    # Process all function calls
+                    function_response_parts = []
+
+                    for part in response.candidates[0].content.parts:
+                        if hasattr(part, 'function_call') and part.function_call:
+                            function_call = part.function_call
+                            tool_name = function_call.name
+                            tool_input = dict(function_call.args)
+
+                            print(f"Using tool: {tool_name}")
+                            print(f"  Input: {tool_input}")
+
+                            # Execute tool
+                            result = await self.call_tool(tool_name, tool_input)
+
+                            print(f"  Result: {result.content[:200]}...")
+                            print()
+
+                            # Call callback if provided (for UI)
+                            if self.tool_call_callback:
+                                self.tool_call_callback(tool_name, tool_input, str(result.content))
+
+                            # Add function response
+                            function_response_parts.append(
+                                Part.from_function_response(
+                                    name=tool_name,
+                                    response={"result": str(result.content)}
+                                )
+                            )
+
+                    # Send function responses back to model
+                    response = chat.send_message(function_response_parts)
+                else:
+                    # No function calls, extract text response
+                    text_parts = [
+                        part.text for part in response.candidates[0].content.parts
+                        if hasattr(part, 'text')
+                    ]
+                    return ''.join(text_parts) if text_parts else "I couldn't generate a response."
+            else:
+                # Empty response
+                return "I couldn't generate a response."
+
     async def answer_question(self, question: str) -> str:
         """
         Answer a question about documents using available tools.
@@ -291,6 +530,8 @@ class DocumentAgent:
             return await self._answer_with_anthropic(question)
         elif self.provider == "openai":
             return await self._answer_with_openai(question)
+        elif self.provider == "gemini":
+            return await self._answer_with_gemini(question)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 

@@ -70,7 +70,7 @@ def extract_pdf(pdf_path, output_dir=None):
 
     # Run pdf_extractor.py
     try:
-        cmd = [sys.executable, str(extractor_script), str(pdf_path), str(output_dir)]
+        cmd = [sys.executable, str(extractor_script), str(pdf_path), "-o", str(output_dir)]
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
 
         # Print output from extractor

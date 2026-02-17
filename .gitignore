@@ -48,6 +48,12 @@ Thumbs.db
 # PDF Import specific
 *_extracted/
 *.pdf
+renders/
+
+# Service account and credential files
+*-sa-*.json
+*service-account*.json
+credentials.json
 
 # Test output and evaluation results
 test/renders/
